@@ -48,9 +48,12 @@ header p {
   position: relative;
   display: flex;
   flex-direction: row;
+  justify-content: center;
+  align-items: center;
   gap: 1rem;
   flex: 1;
   max-width: 550px;
+  margin: 0 auto;
 }
 
 .chessboard-wrapper {
@@ -269,10 +272,19 @@ header p {
   .start-card {
     padding: 1.5rem;
     padding-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .setup-section {
+    text-align: center;
+    width: 100%;
   }
 
   .difficulty-grid {
     grid-template-columns: repeat(2, 1fr);
+    width: 100%;
   }
 }
 

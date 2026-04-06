@@ -70,6 +70,11 @@ export const useChessEngine = () => {
   const analyzePosition = useCallback((fen: string, difficulty: Difficulty) => {
     if (!workerRef.current) return;
     
+    // Clear state for new position to avoid race conditions
+    setBestMove('');
+    setEvaluation(0);
+    setPv([]);
+    
     let depth = 12;
     switch (difficulty) {
       case 'easy': depth = 5; break;

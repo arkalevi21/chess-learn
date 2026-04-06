@@ -155,6 +155,7 @@ function App() {
     setGame(new Chess());
     setMoveHistory([]);
     setCritique(null);
+    setLastBestMove('');
   };
 
   const undoMove = () => {
