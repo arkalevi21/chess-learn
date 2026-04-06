@@ -1,10 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Chess, Square } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { useChessEngine, Difficulty } from './hooks/useChessEngine';
 import EvaluationBar from './components/EvaluationBar';
 import { getIndonesianExplanation } from './utils/chessExplainer';
 import './App.css';
+
+// Helper: rebuild a Chess instance from a list of SAN moves (preserves full history)
+function rebuildGame(moves: string[]): Chess {
+  const g = new Chess();
+  moves.forEach(m => g.move(m));
+  return g;
+}
 
 function App() {
   const [game, setGame] = useState(new Chess());
@@ -22,35 +29,68 @@ function App() {
   const [lastBestMove, setLastBestMove] = useState<string>('');
   const [critique, setCritique] = useState<{ userMove: string; bestMove: string; reason: string } | null>(null);
 
+  // Ref to always access the latest game (avoids stale closures in setTimeout)
+  const gameRef = useRef(game);
+  gameRef.current = game;
+
   // AI Turn Handling
+  // IMPORTANT: `critique` is in the dependency array so that clicking
+  // "Lanjutkan Permainan" (which clears critique) triggers the bot to move.
   useEffect(() => {
     if (!gameStarted || game.isGameOver()) return;
     
-    // Safety: Only proceed if the analysis matches the current board FEN
     const fen = game.fen();
     if (analyzedFen !== fen) return;
 
-    // NEW Solusi: Pause bot jika ada koreksi yang belum dibaca
+    // Pause bot while the player is reading the critique
     if (critique) return;
 
     const turn = game.turn();
     if (turn !== playerColor) {
-      // It's AI's turn
-      const timer = setTimeout(() => {
-        if (bestMove) {
-          makeMove(bestMove);
-        }
-      }, 800); // Slightly faster for responsiveness
-      return () => clearTimeout(timer);
+      // It's AI's turn — move after a short delay
+      if (bestMove) {
+        const currentFen = fen; // capture for safety check in timeout
+        const timer = setTimeout(() => {
+          const g = gameRef.current;
+          // Safety: only proceed if the game hasn't changed since we scheduled this
+          if (g.fen() !== currentFen) return;
+          
+          try {
+            let result;
+            if (bestMove.length >= 4 && !bestMove.includes(' ')) {
+              result = g.move({
+                from: bestMove.slice(0, 2) as Square,
+                to: bestMove.slice(2, 4) as Square,
+                promotion: bestMove.slice(4, 5) || 'q',
+              });
+            } else {
+              result = g.move(bestMove);
+            }
+            
+            if (result) {
+              const fullHistory = g.history();
+              const newGame = rebuildGame(fullHistory);
+              setGame(newGame);
+              setMoveHistory([...fullHistory]);
+              setCritique(null);
+              setMoveFrom(null);
+              setOptionSquares({});
+            }
+          } catch {
+            // Move failed — engine might be out of sync, ignore
+          }
+        }, 800);
+        return () => clearTimeout(timer);
+      }
     } else {
-      // It's Player's turn - record the best move before they play
+      // It's Player's turn — record the best move BEFORE they play
       if (bestMove && !isAnalyzing) {
         setLastBestMove(bestMove);
       }
     }
-  }, [game, bestMove, gameStarted, playerColor, isAnalyzing, analyzedFen]);
+  }, [game, bestMove, gameStarted, playerColor, isAnalyzing, analyzedFen, critique]);
 
-  // Effect to trigger analysis
+  // Trigger engine analysis whenever the board changes
   useEffect(() => {
     if (gameStarted) {
       analyzePosition(game.fen(), difficulty);
@@ -81,61 +121,52 @@ function App() {
     return true;
   }
 
-  function makeMove(moveStr: string) {
+  function onPlayerMove(moveStr: string) {
+    // Only allow moves on the player's turn
+    if (game.turn() !== playerColor) return null;
+
     try {
       let result;
       if (moveStr.length >= 4 && !moveStr.includes(' ')) {
-        // UCI format (e.g. e2e4)
         result = game.move({
           from: moveStr.slice(0, 2) as Square,
           to: moveStr.slice(2, 4) as Square,
           promotion: moveStr.slice(4, 5) || 'q',
         });
       } else {
-        // SAN format (e.g. e4, Nf3)
         result = game.move(moveStr);
       }
 
       if (result) {
-        // Perfect-play feedback logic
-        if (game.turn() !== playerColor) {
-           // Player just moved
-           const moveLan = result.from + result.to + (result.promotion || '');
-           if (lastBestMove && moveLan !== lastBestMove) {
-             // Use the history BEFORE the current move for explanation context
-             const prevHistory = game.history().slice(0, -1);
-             const tempGame = new Chess();
-             prevHistory.forEach(m => tempGame.move(m));
-             
-             const explanation = getIndonesianExplanation(tempGame, lastBestMove, evaluation);
-             setCritique({
-               userMove: result.san,
-               bestMove: lastBestMove,
-               reason: explanation.reason
-             });
-           } else {
-             setCritique(null);
-           }
+        // Check if the player's move matches the engine's recommendation
+        const moveLan = result.from + result.to + (result.promotion || '');
+        if (lastBestMove && moveLan !== lastBestMove) {
+          // Player made a sub-optimal move — show critique
+          const prevHistory = game.history().slice(0, -1);
+          const tempGame = rebuildGame(prevHistory);
+          const explanation = getIndonesianExplanation(tempGame, lastBestMove, evaluation);
+          setCritique({
+            userMove: result.san,
+            bestMove: lastBestMove,
+            reason: explanation.reason,
+          });
         } else {
-          // AI just moved
           setCritique(null);
         }
 
         // Rebuild game from full history to preserve it
         const fullHistory = game.history();
-        const newGame = new Chess();
-        fullHistory.forEach(m => newGame.move(m));
-        
+        const newGame = rebuildGame(fullHistory);
         setGame(newGame);
         setMoveHistory([...fullHistory]);
-        
         setMoveFrom(null);
         setOptionSquares({});
         return result;
       }
-    } catch (e) {
+    } catch {
       return null;
     }
+    return null;
   }
 
   function onSquareClick({ square }: { square: string }) {
@@ -148,7 +179,7 @@ function App() {
       return;
     }
 
-    const move = makeMove(moveFrom + s);
+    const move = onPlayerMove(moveFrom + s);
     if (!move) {
       const hasMoveOptions = getMoveOptions(s);
       if (hasMoveOptions) setMoveFrom(s);
@@ -161,7 +192,7 @@ function App() {
 
   function onDrop(sourceSquare: string, targetSquare: string) {
     if (game.turn() !== playerColor) return false;
-    const move = makeMove(sourceSquare + targetSquare);
+    const move = onPlayerMove(sourceSquare + targetSquare);
     return !!move;
   }
 
@@ -170,29 +201,28 @@ function App() {
     setDifficultyLevel(diff);
     setDifficulty(diff);
     setGameStarted(true);
-    setGame(new Chess());
+    const newGame = new Chess();
+    setGame(newGame);
     setMoveHistory([]);
     setCritique(null);
     setLastBestMove('');
   };
 
   const undoMove = () => {
-    // Saat critique aktif, Bot belum jalan, jadi hanya undo 1x (langkah User saja)
+    // Critique is active → bot hasn't moved yet → only undo the player's last move (1x)
     game.undo();
 
-    // Rebuild game dari history yang tersisa agar history tetap utuh
-    const remainingHistory = game.history();
-    const newGame = new Chess();
-    remainingHistory.forEach(m => newGame.move(m));
+    // Rebuild from remaining history so history is fully preserved
+    const remaining = game.history();
+    const newGame = rebuildGame(remaining);
     
     setGame(newGame);
-    setMoveHistory([...remainingHistory]);
+    setMoveHistory([...remaining]);
     setCritique(null);
-    setLastBestMove(''); // Clear agar langkah berikutnya tidak langsung dikoreksi
+    setLastBestMove(''); // Clear so the next move isn't compared against stale data
     setMoveFrom(null);
     setOptionSquares({});
   };
-
 
   if (!gameStarted) {
     return (

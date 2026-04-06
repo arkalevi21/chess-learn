@@ -9,7 +9,10 @@ export const useChessEngine = () => {
   const [bestMove, setBestMove] = useState<string>('');
   const [pv, setPv] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const currentFenRef = useRef<string>('');
+
+  // Track analysis: ignore bestmove responses from 'stop' command
+  const expectingStopRef = useRef(false);
+  const pendingFenRef = useRef<string>('');
 
   useEffect(() => {
     const worker = new Worker('/stockfish-single.js');
@@ -39,10 +42,15 @@ export const useChessEngine = () => {
       }
 
       if (line.startsWith('bestmove')) {
+        if (expectingStopRef.current) {
+          // This bestmove is from the 'stop' command for the OLD position — ignore it
+          expectingStopRef.current = false;
+          return;
+        }
         const match = line.match(/bestmove\s(\S+)/);
         if (match) {
           setBestMove(match[1]);
-          setAnalyzedFen(currentFenRef.current);
+          setAnalyzedFen(pendingFenRef.current);
           setIsAnalyzing(false);
         }
       }
@@ -73,11 +81,12 @@ export const useChessEngine = () => {
   const analyzePosition = useCallback((fen: string, difficulty: Difficulty) => {
     if (!workerRef.current) return;
     
-    // Clear state for new position to avoid race conditions
+    // Clear state for new analysis
     setBestMove('');
     setEvaluation(0);
     setPv([]);
-    
+    setIsAnalyzing(true);
+
     let depth = 12;
     switch (difficulty) {
       case 'easy': depth = 5; break;
@@ -86,8 +95,10 @@ export const useChessEngine = () => {
       case 'master': depth = 18; break;
     }
     
-    setIsAnalyzing(true);
-    currentFenRef.current = fen;
+    // Mark that the next bestmove from 'stop' should be ignored
+    expectingStopRef.current = true;
+    pendingFenRef.current = fen;
+
     workerRef.current.postMessage('stop');
     workerRef.current.postMessage(`position fen ${fen}`);
     workerRef.current.postMessage(`go depth ${depth}`);
