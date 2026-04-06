@@ -200,13 +200,29 @@ header p {
   color: #94a3b8;
 }
 
-.undo-retry-btn {
-  width: 100%;
+.critique-controls {
+  display: flex;
+  gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.undo-retry-btn {
+  flex: 1;
   background: #f59e0b !important;
   color: #0f172a !important;
   font-weight: 700 !important;
   border: none;
+  padding: 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.continue-btn {
+  flex: 1;
+  background: #334155 !important;
+  color: #f8fafc !important;
+  font-weight: 600 !important;
+  border: 1px solid #475569;
   padding: 0.75rem;
   border-radius: 8px;
   cursor: pointer;

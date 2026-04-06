@@ -30,6 +30,9 @@ function App() {
     const fen = game.fen();
     if (analyzedFen !== fen) return;
 
+    // NEW Solusi: Pause bot jika ada koreksi yang belum dibaca
+    if (critique) return;
+
     const turn = game.turn();
     if (turn !== playerColor) {
       // It's AI's turn
@@ -268,9 +271,14 @@ function App() {
                 <p>Langkah Anda: <strong>{critique.userMove}</strong></p>
                 <p>Ada yang lebih akurat: <strong>{critique.bestMove}</strong></p>
                 <div className="critique-reason">{critique.reason}</div>
-                <button className="undo-retry-btn" onClick={undoMove}>
-                  Undo & Coba Lagi
-                </button>
+                <div className="critique-controls">
+                  <button className="undo-retry-btn" onClick={undoMove}>
+                    Undo & Coba Lagi
+                  </button>
+                  <button className="continue-btn" onClick={() => setCritique(null)}>
+                    Lanjutkan Permainan
+                  </button>
+                </div>
               </div>
             </div>
           )}
