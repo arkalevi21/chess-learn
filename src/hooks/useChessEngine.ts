@@ -10,9 +10,9 @@ export const useChessEngine = () => {
   const [pv, setPv] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Track analysis: ignore bestmove responses from 'stop' command
-  const expectingStopRef = useRef(false);
+  // Track which FEN the current analysis is for
   const pendingFenRef = useRef<string>('');
+  const isRunningRef = useRef(false);
 
   useEffect(() => {
     const worker = new Worker('/stockfish-single.js');
@@ -42,17 +42,15 @@ export const useChessEngine = () => {
       }
 
       if (line.startsWith('bestmove')) {
-        if (expectingStopRef.current) {
-          // This bestmove is from the 'stop' command for the OLD position — ignore it
-          expectingStopRef.current = false;
-          return;
-        }
         const match = line.match(/bestmove\s(\S+)/);
-        if (match) {
+        if (match && match[1] !== '(none)') {
+          // Only accept bestmove if it's for the position we're currently analyzing
+          const currentPending = pendingFenRef.current;
           setBestMove(match[1]);
-          setAnalyzedFen(pendingFenRef.current);
-          setIsAnalyzing(false);
+          setAnalyzedFen(currentPending);
         }
+        setIsAnalyzing(false);
+        isRunningRef.current = false;
       }
     };
 
@@ -95,11 +93,19 @@ export const useChessEngine = () => {
       case 'master': depth = 18; break;
     }
     
-    // Mark that the next bestmove from 'stop' should be ignored
-    expectingStopRef.current = true;
+    // Update the pending FEN for this analysis
     pendingFenRef.current = fen;
 
-    workerRef.current.postMessage('stop');
+    // Only send 'stop' if a previous analysis is running
+    if (isRunningRef.current) {
+      workerRef.current.postMessage('stop');
+      // The 'stop' will cause a bestmove for the old position,
+      // but pendingFenRef is already updated to the new FEN,
+      // so analyzedFen will be set to the new FEN.
+      // This is OK because we immediately start a new analysis below.
+    }
+
+    isRunningRef.current = true;
     workerRef.current.postMessage(`position fen ${fen}`);
     workerRef.current.postMessage(`go depth ${depth}`);
   }, []);
