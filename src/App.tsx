@@ -175,10 +175,20 @@ function App() {
   };
 
   const undoMove = () => {
-    game.undo(); // Undo AI move
-    game.undo(); // Undo Player move
-    setGame(new Chess(game.fen()));
-    setMoveHistory(game.history());
+    // Jika sedang ada kritik, berarti Bot belum melangkah, jadi hanya perlu undo 1x (langkah User)
+    // Jika tidak ada kritik, berarti Bot sudah melangkah, jadi undo 2x (langkah Bot + langkah User)
+    const undoCount = critique ? 1 : 2;
+    
+    for (let i = 0; i < undoCount; i++) {
+      game.undo();
+    }
+
+    // Refresh game instance tanpa kehilangan history
+    const newGame = new Chess();
+    game.history().forEach(m => newGame.move(m));
+    
+    setGame(newGame);
+    setMoveHistory(newGame.history());
     setCritique(null);
     setMoveFrom(null);
     setOptionSquares({});
