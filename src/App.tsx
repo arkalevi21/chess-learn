@@ -9,7 +9,7 @@ import './App.css';
 function App() {
   const [game, setGame] = useState(new Chess());
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
-  const { evaluation, bestMove, isAnalyzing, analyzePosition, setDifficulty } = useChessEngine();
+  const { evaluation, bestMove, isAnalyzing, analyzedFen, analyzePosition, setDifficulty } = useChessEngine();
   
   // Game Configuration
   const [gameStarted, setGameStarted] = useState(false);
@@ -26,6 +26,10 @@ function App() {
   useEffect(() => {
     if (!gameStarted || game.isGameOver()) return;
     
+    // Safety: Only proceed if the analysis matches the current board FEN
+    const fen = game.fen();
+    if (analyzedFen !== fen) return;
+
     const turn = game.turn();
     if (turn !== playerColor) {
       // It's AI's turn
@@ -33,7 +37,7 @@ function App() {
         if (bestMove) {
           makeMove(bestMove);
         }
-      }, 1000);
+      }, 800); // Slightly faster for responsiveness
       return () => clearTimeout(timer);
     } else {
       // It's Player's turn - record the best move before they play
@@ -41,7 +45,7 @@ function App() {
         setLastBestMove(bestMove);
       }
     }
-  }, [game, bestMove, gameStarted, playerColor, isAnalyzing]);
+  }, [game, bestMove, gameStarted, playerColor, isAnalyzing, analyzedFen]);
 
   // Effect to trigger analysis
   useEffect(() => {
@@ -95,10 +99,15 @@ function App() {
            // Player just moved
            const moveLan = result.from + result.to + (result.promotion || '');
            if (lastBestMove && moveLan !== lastBestMove) {
-             const explanation = getIndonesianExplanation(new Chess(game.history().slice(0, -1).join(' ')), lastBestMove, evaluation);
+             // Use the history BEFORE the current move for explanation context
+             const prevHistory = game.history().slice(0, -1);
+             const tempGame = new Chess();
+             prevHistory.forEach(m => tempGame.move(m));
+             
+             const explanation = getIndonesianExplanation(tempGame, lastBestMove, evaluation);
              setCritique({
                userMove: result.san,
-               bestMove: lastBestMove, // Should convert to San for better UI, but we'll use Raw for now
+               bestMove: lastBestMove,
                reason: explanation.reason
              });
            } else {
@@ -109,8 +118,12 @@ function App() {
           setCritique(null);
         }
 
-        setGame(new Chess(game.fen()));
-        setMoveHistory(game.history());
+        // IMPORTANT: Trigger re-render without losing history
+        setGame(new Chess(game.fen())); 
+        // Sync history explicitly from the game object
+        const historyFromGame = game.history();
+        setMoveHistory([...historyFromGame]);
+        
         setMoveFrom(null);
         setOptionSquares({});
         return result;

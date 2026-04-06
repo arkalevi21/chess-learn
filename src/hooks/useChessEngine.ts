@@ -5,9 +5,11 @@ export type Difficulty = 'easy' | 'medium' | 'hard' | 'master';
 export const useChessEngine = () => {
   const workerRef = useRef<Worker | null>(null);
   const [evaluation, setEvaluation] = useState<number>(0);
+  const [analyzedFen, setAnalyzedFen] = useState<string>('');
   const [bestMove, setBestMove] = useState<string>('');
   const [pv, setPv] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const currentFenRef = useRef<string>('');
 
   useEffect(() => {
     const worker = new Worker('/stockfish-single.js');
@@ -40,6 +42,7 @@ export const useChessEngine = () => {
         const match = line.match(/bestmove\s(\S+)/);
         if (match) {
           setBestMove(match[1]);
+          setAnalyzedFen(currentFenRef.current);
           setIsAnalyzing(false);
         }
       }
@@ -84,6 +87,7 @@ export const useChessEngine = () => {
     }
     
     setIsAnalyzing(true);
+    currentFenRef.current = fen;
     workerRef.current.postMessage('stop');
     workerRef.current.postMessage(`position fen ${fen}`);
     workerRef.current.postMessage(`go depth ${depth}`);
@@ -94,6 +98,7 @@ export const useChessEngine = () => {
     bestMove,
     pv,
     isAnalyzing,
+    analyzedFen,
     setDifficulty,
     analyzePosition
   };
