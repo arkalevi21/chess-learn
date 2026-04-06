@@ -121,11 +121,13 @@ function App() {
           setCritique(null);
         }
 
-        // IMPORTANT: Trigger re-render without losing history
-        setGame(new Chess(game.fen())); 
-        // Sync history explicitly from the game object
-        const historyFromGame = game.history();
-        setMoveHistory([...historyFromGame]);
+        // Rebuild game from full history to preserve it
+        const fullHistory = game.history();
+        const newGame = new Chess();
+        fullHistory.forEach(m => newGame.move(m));
+        
+        setGame(newGame);
+        setMoveHistory([...fullHistory]);
         
         setMoveFrom(null);
         setOptionSquares({});
@@ -175,24 +177,22 @@ function App() {
   };
 
   const undoMove = () => {
-    // Jika sedang ada kritik, berarti Bot belum melangkah, jadi hanya perlu undo 1x (langkah User)
-    // Jika tidak ada kritik, berarti Bot sudah melangkah, jadi undo 2x (langkah Bot + langkah User)
-    const undoCount = critique ? 1 : 2;
-    
-    for (let i = 0; i < undoCount; i++) {
-      game.undo();
-    }
+    // Saat critique aktif, Bot belum jalan, jadi hanya undo 1x (langkah User saja)
+    game.undo();
 
-    // Refresh game instance tanpa kehilangan history
+    // Rebuild game dari history yang tersisa agar history tetap utuh
+    const remainingHistory = game.history();
     const newGame = new Chess();
-    game.history().forEach(m => newGame.move(m));
+    remainingHistory.forEach(m => newGame.move(m));
     
     setGame(newGame);
-    setMoveHistory(newGame.history());
+    setMoveHistory([...remainingHistory]);
     setCritique(null);
+    setLastBestMove(''); // Clear agar langkah berikutnya tidak langsung dikoreksi
     setMoveFrom(null);
     setOptionSquares({});
   };
+
 
   if (!gameStarted) {
     return (
