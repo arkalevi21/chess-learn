@@ -216,10 +216,13 @@ function App() {
     const remaining = game.history();
     const newGame = rebuildGame(remaining);
     
+    // Save the recommended move so we expect it on the very next turn
+    const expectedTargetMove = critique?.bestMove || '';
+
     setGame(newGame);
     setMoveHistory([...remaining]);
     setCritique(null);
-    setLastBestMove(''); // Clear so the next move isn't compared against stale data
+    setLastBestMove(expectedTargetMove); 
     setMoveFrom(null);
     setOptionSquares({});
   };

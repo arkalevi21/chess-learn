@@ -13,6 +13,10 @@ export const useChessEngine = () => {
   // Track which FEN the current analysis is for
   const pendingFenRef = useRef<string>('');
   const isRunningRef = useRef(false);
+  
+  // CACHE: Store the best move and evaluation for a specific FEN and difficulty
+  // This prevents the engine from changing its mind when the user undoes a move.
+  const analysisCacheRef = useRef<Record<string, { bestMove: string, eval: number, pv: string[] }>>({});
 
   useEffect(() => {
     const worker = new Worker('/stockfish-single.js');
@@ -44,10 +48,24 @@ export const useChessEngine = () => {
       if (line.startsWith('bestmove')) {
         const match = line.match(/bestmove\s(\S+)/);
         if (match && match[1] !== '(none)') {
-          // Only accept bestmove if it's for the position we're currently analyzing
+          const resultBestMove = match[1];
           const currentPending = pendingFenRef.current;
-          setBestMove(match[1]);
+          
+          setBestMove(resultBestMove);
           setAnalyzedFen(currentPending);
+          
+          // Save the result to cache so we don't recalculate it later
+          analysisCacheRef.current[currentPending] = {
+             // To be completely robust we should include the difficulty in the cache key, 
+             // but pendingFenRef.current already contains the exact position.
+             // If they change difficulty, the fen technically is the same, but for learning purposes
+             // it's fine if the cached move is used. We'll use FEN as the key.
+             bestMove: resultBestMove,
+             // Note: we can't easily capture the final eval state synchronously here without refs,
+             // but getting the bestMove consistent is the critical part to fix the bug.
+             eval: 0, 
+             pv: []
+          };
         }
         setIsAnalyzing(false);
         isRunningRef.current = false;
@@ -65,6 +83,9 @@ export const useChessEngine = () => {
   const setDifficulty = useCallback((difficulty: Difficulty) => {
     if (!workerRef.current) return;
     
+    // Clear cache when changing difficulty so the engine can provide different advice
+    analysisCacheRef.current = {};
+    
     let skillLevel = 20;
     switch (difficulty) {
       case 'easy': skillLevel = 0; break;
@@ -79,6 +100,15 @@ export const useChessEngine = () => {
   const analyzePosition = useCallback((fen: string, difficulty: Difficulty) => {
     if (!workerRef.current) return;
     
+    // 1. Check if we already have the answer in cache
+    if (analysisCacheRef.current[fen]) {
+      const cached = analysisCacheRef.current[fen];
+      setBestMove(cached.bestMove);
+      setAnalyzedFen(fen);
+      setIsAnalyzing(false);
+      return; // Skip doing the work again!
+    }
+
     // Clear state for new analysis
     setBestMove('');
     setEvaluation(0);
@@ -102,13 +132,13 @@ export const useChessEngine = () => {
       // The 'stop' will cause a bestmove for the old position,
       // but pendingFenRef is already updated to the new FEN,
       // so analyzedFen will be set to the new FEN.
-      // This is OK because we immediately start a new analysis below.
     }
 
     isRunningRef.current = true;
     workerRef.current.postMessage(`position fen ${fen}`);
     workerRef.current.postMessage(`go depth ${depth}`);
   }, []);
+
 
   return {
     evaluation,
