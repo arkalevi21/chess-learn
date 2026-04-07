@@ -27,11 +27,22 @@ function App() {
   const [moveFrom, setMoveFrom] = useState<Square | null>(null);
   const [optionSquares, setOptionSquares] = useState<Record<string, any>>({});
   const [lastBestMove, setLastBestMove] = useState<string>('');
-  const [critique, setCritique] = useState<{ userMove: string; bestMove: string; reason: string } | null>(null);
+  const [critique, setCritique] = useState<{ userMove: string; bestMove: string; reason: string; punishmentMove?: string } | null>(null);
 
   // Ref to always access the latest game (avoids stale closures in setTimeout)
   const gameRef = useRef(game);
   gameRef.current = game;
+
+  // Capture punishment move while critique is active
+  useEffect(() => {
+    if (critique && bestMove && !isAnalyzing) {
+      if (!critique.punishmentMove || critique.punishmentMove !== bestMove) {
+        // Now that we have the bot's intended reply (punishment), update the explanation!
+        const explanation = getIndonesianExplanation(game, critique.bestMove, evaluation, bestMove);
+        setCritique(prev => prev ? { ...prev, reason: explanation.reason, punishmentMove: bestMove } : null);
+      }
+    }
+  }, [bestMove, isAnalyzing, critique, game, evaluation]);
 
   // AI Turn Handling
   // IMPORTANT: `critique` is in the dependency array so that clicking
@@ -275,6 +286,14 @@ function App() {
     );
   }
 
+  const threatArrows: any[] = [];
+  if (critique?.punishmentMove && critique.punishmentMove.length >= 4) {
+     const from = critique.punishmentMove.slice(0, 2);
+     const to = critique.punishmentMove.slice(2, 4);
+     // The types in react-chessboard 5 define Arrow as { startSquare, endSquare, color }
+     threatArrows.push({ startSquare: from, endSquare: to, color: 'rgba(255, 0, 0, 0.8)' });
+  }
+
   return (
     <div className="app-container">
       <div className="game-layout">
@@ -282,8 +301,24 @@ function App() {
           <EvaluationBar evaluation={evaluation} />
           
           <div className="chessboard-wrapper">
+            {game.isGameOver() && (
+              <div className="game-over-overlay">
+                <div className="game-over-modal">
+                  <h2>Game Over</h2>
+                  <p>
+                    {game.isCheckmate() 
+                      ? (game.turn() === 'w' ? 'Hitam Menang (Skakmat)' : 'Putih Menang (Skakmat)') 
+                      : 'Permainan Seri'}
+                  </p>
+                  <button className="main-start-btn" onClick={() => setGameStarted(false)}>
+                    Menu Utama
+                  </button>
+                </div>
+              </div>
+            )}
             <Chessboard 
               options={{
+                arrows: threatArrows,
                 position: game.fen(), 
                 onPieceDrop: ({ sourceSquare, targetSquare }) => onDrop(sourceSquare, targetSquare ?? ''), 
                 onSquareClick: onSquareClick,

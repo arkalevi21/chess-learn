@@ -117,9 +117,9 @@ export const useChessEngine = () => {
 
     let depth = 12;
     switch (difficulty) {
-      case 'easy': depth = 5; break;
-      case 'medium': depth = 8; break;
-      case 'hard': depth = 12; break;
+      case 'easy': depth = 1; break; // Depth 1 forces the engine to only look 1 move ahead (blunders a lot)
+      case 'medium': depth = 5; break;
+      case 'hard': depth = 10; break;
       case 'master': depth = 18; break;
     }
     
